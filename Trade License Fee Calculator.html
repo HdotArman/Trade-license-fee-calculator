@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trade License Fee Calculator</title>
+<style>
+:root{--bg:#f2f5f7;--surface:#fff;--ink:#16232f;--muted:#5b6b78;--line:#d6dee4;--accent:#0f6b63;--accent-ink:#fff;--warn:#a4520b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a22;--surface:#17252f;--ink:#e8eef2;--muted:#9fb0bc;--line:#2c3f4c;--accent:#3fb3a6;--accent-ink:#06201d;--warn:#f0a35e}}
+:root[data-theme="dark"]{--bg:#0f1a22;--surface:#17252f;--ink:#e8eef2;--muted:#9fb0bc;--line:#2c3f4c;--accent:#3fb3a6;--accent-ink:#06201d;--warn:#f0a35e}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;line-height:1.5}
+main{max-width:560px;margin:0 auto;padding:24px 16px 40px}
+h1{font-size:1.4rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:.95rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+label{display:block;font-weight:600;font-size:.92rem;margin:0 0 4px}
+input,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:14px}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.hint{color:var(--muted);font-size:.85rem;margin:-8px 0 14px}
+table{width:100%;border-collapse:collapse}
+td{padding:7px 0;border-bottom:1px solid var(--line);vertical-align:top}
+td:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td small{display:block;color:var(--muted)}
+tr.sec td{font-weight:700;padding-top:14px;border-bottom:2px solid var(--line)}
+tr.total td{font-size:1.25rem;font-weight:700;color:var(--accent);border-bottom:0;padding-top:12px}
+.warn{color:var(--warn)}
+.note{color:var(--muted);font-size:.82rem}
+button{font:inherit;font-weight:600;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+button.alt{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.row{display:flex;gap:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Trade license fee calculator</h1>
+<p class="sub">Enter the fees and the month of payment. The total updates as you type.</p>
+
+<div class="card">
+  <label for="lic">License fee (taka)</label>
+  <input id="lic" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 1000">
+  <label for="sign">Signboard fee (taka)</label>
+  <input id="sign" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 500">
+  <label for="month">Month of payment</label>
+  <select id="month"></select>
+  <p class="hint" id="mhint"></p>
+</div>
+
+<div class="card">
+  <table id="out"></table>
+</div>
+
+<div class="row">
+  <button id="copy" type="button">Copy breakdown</button>
+  <button id="reset" type="button" class="alt">Reset</button>
+</div>
+<p class="note" id="copied" aria-live="polite"></p>
+
+<p class="note">Surcharge is counted per month as the larger of 10% of the license fee or 100 taka. VAT is 15% on license fee, signboard fee and surcharge. The fixed fees carry no VAT. This is an estimate. Check the current rules before quoting a client.</p>
+</main>
+
+<script>
+// ---- Settings: change the numbers here ----
+var FIXED = [["Income tax",3000],["Book fee",270],["Other fee",500],["Bank fee",50]];
+var SURCHARGE_PCT = 0.10, SURCHARGE_MIN = 100, VAT_PCT = 0.15;
+// Fiscal year starts in July. No surcharge for July, August, September.
+var MONTHS = ["July","August","September","October","November","December","January","February","March","April","May","June"];
+
+var $ = function(id){return document.getElementById(id)};
+var fmt = function(n){return n.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:2})+" tk"};
+
+MONTHS.forEach(function(m,i){var o=document.createElement("option");o.value=i;o.textContent=m;$("month").appendChild(o)});
+$("month").value = 0;
+
+function calc(){
+  var lic = Math.max(0, parseFloat($("lic").value)||0);
+  var sign = Math.max(0, parseFloat($("sign").value)||0);
+  var idx = parseInt($("month").value,10);          // July = 0 ... June = 11
+  var months = idx >= 3 ? idx : 0;                  // October = 3, November = 4 ...
+  var perMonth = Math.max(lic*SURCHARGE_PCT, SURCHARGE_MIN);
+  var surcharge = (months > 0 && lic > 0) ? perMonth*months : 0;
+  var vatBase = lic + sign + surcharge;
+  var vat = vatBase*VAT_PCT;
+  var fixedTotal = FIXED.reduce(function(s,f){return s+f[1]},0);
+  var total = vatBase + vat + fixedTotal;
+  return {lic:lic,sign:sign,months:months,perMonth:perMonth,surcharge:surcharge,vatBase:vatBase,vat:vat,fixedTotal:fixedTotal,total:total};
+}
+
+function render(){
+  var r = calc(), h = "";
+  $("mhint").textContent = r.months > 0
+    ? "Late: "+r.months+" surcharge month"+(r.months>1?"s":"")+" counted from July."
+    : "On time (paid by 30 September). No surcharge.";
+  $("mhint").className = "hint" + (r.months>0 ? " warn" : "");
+  h += '<tr class="sec"><td colspan="2">Fees</td></tr>';
+  h += '<tr><td>License fee</td><td>'+fmt(r.lic)+'</td></tr>';
+  h += '<tr><td>Signboard fee</td><td>'+fmt(r.sign)+'</td></tr>';
+  h += '<tr><td>Surcharge<small>'+(r.months>0 ? r.months+' × '+fmt(r.perMonth) : 'None')+'</small></td><td>'+fmt(r.surcharge)+'</td></tr>';
+  h += '<tr><td>VAT 15%<small>on '+fmt(r.vatBase)+'</small></td><td>'+fmt(r.vat)+'</td></tr>';
+  h += '<tr class="sec"><td colspan="2">Fixed fees</td></tr>';
+  FIXED.forEach(function(f){h += '<tr><td>'+f[0]+'</td><td>'+fmt(f[1])+'</td></tr>'});
+  h += '<tr class="total"><td>Total payable</td><td>'+fmt(r.total)+'</td></tr>';
+  $("out").innerHTML = h;
+}
+
+function text(){
+  var r = calc();
+  var t = "Trade license fee ("+MONTHS[$("month").value]+")\n";
+  t += "License fee: "+fmt(r.lic)+"\nSignboard fee: "+fmt(r.sign)+"\n";
+  t += "Surcharge: "+fmt(r.surcharge)+"\nVAT 15%: "+fmt(r.vat)+"\n";
+  FIXED.forEach(function(f){t += f[0]+": "+fmt(f[1])+"\n"});
+  return t + "Total: "+fmt(r.total);
+}
+
+["lic","sign","month"].forEach(function(id){$(id).addEventListener("input",render)});
+$("reset").addEventListener("click",function(){$("lic").value="";$("sign").value="";$("month").value=0;$("copied").textContent="";render()});
+$("copy").addEventListener("click",function(){
+  var done = function(ok){$("copied").textContent = ok ? "Copied." : "Copy didn’t work. Select the table and copy it by hand."};
+  try{ navigator.clipboard.writeText(text()).then(function(){done(true)},function(){done(false)}) }catch(e){done(false)}
+});
+render();
+</script>
+</body>
+</html>
